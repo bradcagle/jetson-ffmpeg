@@ -10,6 +10,7 @@ set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-rpath-link=/usr
 
 find_library(LIB_NVBUF nvbuf_utils PATHS /usr/lib/aarch64-linux-gnu/tegra)
 find_library(LIB_V4L2 nvv4l2 PATHS /usr/lib/aarch64-linux-gnu/tegra)
+find_library(LIB_NVJPEG nvjpeg PATHS /usr/lib/aarch64-linux-gnu/tegra)
 find_package (Threads)
 #find_library(LIB_DRM drm PATHS /usr/lib/aarch64-linux-gnu/tegra)
 #find_library(LIB_EGL EGL PATHS /usr/lib/aarch64-linux-gnu/tegra)
@@ -25,6 +26,7 @@ add_library(nvmpi SHARED
     /usr/src/jetson_multimedia_api/samples/common/classes/NvV4l2ElementPlane.cpp
     /usr/src/jetson_multimedia_api/samples/common/classes/NvVideoDecoder.cpp
     /usr/src/jetson_multimedia_api/samples/common/classes/NvVideoEncoder.cpp
+    /usr/src/jetson_multimedia_api/samples/common/classes/NvJpegDecoder.cpp
     #common/NvVideoConverter.cpp
     #common/NvApplicationProfiler.cpp
     #common/NvEglRenderer.cpp
@@ -42,6 +44,7 @@ add_library(nvmpi_static STATIC
     /usr/src/jetson_multimedia_api/samples/common/classes/NvV4l2ElementPlane.cpp
     /usr/src/jetson_multimedia_api/samples/common/classes/NvVideoDecoder.cpp
     /usr/src/jetson_multimedia_api/samples/common/classes/NvVideoEncoder.cpp
+    /usr/src/jetson_multimedia_api/samples/common/classes/NvJpegDecoder.cpp
     #common/NvVideoConverter.cpp
     #common/NvApplicationProfiler.cpp
     #common/NvEglRenderer.cpp
@@ -52,9 +55,11 @@ set_target_properties(nvmpi_static PROPERTIES OUTPUT_NAME nvmpi)
 set_target_properties(nvmpi PROPERTIES VERSION ${PROJECT_VERSION})
 set_target_properties(nvmpi PROPERTIES SOVERSION 1)
 set_target_properties(nvmpi nvmpi_static PROPERTIES PUBLIC_HEADER nvmpi.h)
-target_link_libraries(nvmpi PRIVATE ${CMAKE_THREAD_LIBS_INIT} ${LIB_NVBUF}  ${LIB_V4L2})
+target_link_libraries(nvmpi PRIVATE ${CMAKE_THREAD_LIBS_INIT} ${LIB_NVBUF}  ${LIB_V4L2} ${LIB_NVJPEG})
+target_include_directories(nvmpi PRIVATE /usr/src/jetson_multimedia_api/include/libjpeg-8b)
 target_include_directories(nvmpi PRIVATE /usr/src/jetson_multimedia_api/include)
 target_include_directories(nvmpi PRIVATE /usr/local/cuda/include)
+target_include_directories(nvmpi_static PRIVATE /usr/src/jetson_multimedia_api/include/libjpeg-8b)
 target_include_directories(nvmpi_static PRIVATE /usr/src/jetson_multimedia_api/include)
 target_include_directories(nvmpi_static PRIVATE /usr/local/cuda/include)
 configure_file(nvmpi.pc.in nvmpi.pc @ONLY)

@@ -83,6 +83,12 @@ extern "C" {
 
 	int nvmpi_encoder_close(nvmpictx* ctx);
 
+	nvmpictx* nvmpi_create_jpeg_decoder();
+
+	int nvmpi_decode_jpeg(nvmpictx* ctx, nvPacket* packet, nvFrame* frame);
+
+	int nvmpi_close_jpeg_decoder(nvmpictx* ctx);
+
 #ifdef __cplusplus
 }
 #endif

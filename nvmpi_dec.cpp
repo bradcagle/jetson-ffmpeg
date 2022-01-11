@@ -1,6 +1,7 @@
 
 #include "nvmpi.h"
 #include "NvVideoDecoder.h"
+#include "NvJpegDecoder.h"
 #include "nvbuf_utils.h"
 #include <vector>
 #include <iostream>
@@ -24,6 +25,8 @@ using namespace std;
 struct nvmpictx
 {
 	NvVideoDecoder *dec{nullptr};
+	NvJPEGDecoder *jdec{nullptr};
+	NvBuffer *jdecbuf{nullptr};
 	bool eos{false};
 	bool got_res_event{false};
 	int index{0};
@@ -390,7 +393,6 @@ nvmpictx* nvmpi_create_decoder(nvCodingType codingType,nvPixFormat pixFormat){
 
 
 
-
 int nvmpi_decoder_put_packet(nvmpictx* ctx,nvPacket* packet){
 	int ret;
 	
@@ -537,3 +539,92 @@ int nvmpi_decoder_close(nvmpictx* ctx){
 }
 
 
+nvmpictx* nvmpi_create_jpeg_decoder() {
+	int ret;
+	log_level = LOG_LEVEL_INFO;
+
+	nvmpictx* ctx=new nvmpictx;
+
+	ctx->jdec = NvJPEGDecoder::createJPEGDecoder("jpegdec");
+	TEST_ERROR(!ctx->jdec, "Could not create jpeg decoder", ret);
+
+	return ctx;
+}
+
+
+/*
+int
+write_video_frame(std::ofstream * stream, NvBuffer &buffer)
+{
+    uint32_t i, j;
+    char *data;
+
+    for (i = 0; i < buffer.n_planes; i++)
+    {
+        NvBuffer::NvBufferPlane &plane = buffer.planes[i];
+        size_t bytes_to_write =
+            plane.fmt.bytesperpixel * plane.fmt.width;
+
+        data = (char *) plane.data;
+        for (j = 0; j < plane.fmt.height; j++)
+        {
+            stream->write(data, bytes_to_write);
+            if (!stream->good())
+                return -1;
+            data += plane.fmt.stride;
+        }
+    }
+    return 0;
+}
+
+typedef struct _NVPACKET{
+        unsigned long flags;
+        unsigned long payload_size;
+        unsigned char *payload;
+        unsigned long  pts;
+} nvPacket;
+
+typedef struct _NVFRAME{
+        unsigned long flags;
+        unsigned long payload_size[3];
+        unsigned char *payload[3];
+        unsigned int linesize[3];
+        nvPixFormat type;
+        unsigned int width;
+        unsigned int height;
+        time_t timestamp;
+}nvFrame;
+
+*/
+
+int nvmpi_decode_jpeg(nvmpictx *ctx, nvPacket *packet, nvFrame *frame) {
+	int ret = 0;
+	uint32_t pixfmt;
+	uint32_t i;
+
+
+	if( ctx->jdecbuf )
+		delete ctx->jdecbuf; ctx->jdecbuf = nullptr;
+
+	ret = ctx->jdec->decodeToBuffer(&ctx->jdecbuf, packet->payload, packet->payload_size, &pixfmt, &frame->width, &frame->height);
+	TEST_ERROR(ret < 0, "Error: Could not decode jpeg to buffer", ret);
+
+	if( ctx->jdecbuf ) {
+		for (i = 0; i < ctx->jdecbuf->n_planes; i++) {
+			NvBuffer::NvBufferPlane &plane = ctx->jdecbuf->planes[i];
+			frame->payload[i] = (unsigned char *)plane.data;
+			frame->payload_size[i] = plane.fmt.sizeimage;
+			frame->linesize[i] = plane.fmt.stride;
+		}
+	}
+
+	return ret;
+}
+
+
+int nvmpi_close_jpeg_decoder(nvmpictx* ctx) {
+	delete ctx->jdecbuf; ctx->jdecbuf = nullptr;
+	delete ctx->jdec; ctx->jdec = nullptr;
+	delete ctx; ctx = nullptr;
+	return 0;
+}

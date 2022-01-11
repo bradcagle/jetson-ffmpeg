@@ -552,51 +552,6 @@ nvmpictx* nvmpi_create_jpeg_decoder() {
 }
 
 
-/*
-int
-write_video_frame(std::ofstream * stream, NvBuffer &buffer)
-{
-    uint32_t i, j;
-    char *data;
-
-    for (i = 0; i < buffer.n_planes; i++)
-    {
-        NvBuffer::NvBufferPlane &plane = buffer.planes[i];
-        size_t bytes_to_write =
-            plane.fmt.bytesperpixel * plane.fmt.width;
-
-        data = (char *) plane.data;
-        for (j = 0; j < plane.fmt.height; j++)
-        {
-            stream->write(data, bytes_to_write);
-            if (!stream->good())
-                return -1;
-            data += plane.fmt.stride;
-        }
-    }
-    return 0;
-}
-
-typedef struct _NVPACKET{
-        unsigned long flags;
-        unsigned long payload_size;
-        unsigned char *payload;
-        unsigned long  pts;
-} nvPacket;
-
-typedef struct _NVFRAME{
-        unsigned long flags;
-        unsigned long payload_size[3];
-        unsigned char *payload[3];
-        unsigned int linesize[3];
-        nvPixFormat type;
-        unsigned int width;
-        unsigned int height;
-        time_t timestamp;
-}nvFrame;
-
-*/
-
 int nvmpi_decode_jpeg(nvmpictx *ctx, nvPacket *packet, nvFrame *frame) {
 	int ret = 0;
 	uint32_t pixfmt;

@@ -1,8 +1,10 @@
-
 #include "nvmpi.h"
 #include "NvVideoDecoder.h"
 #include "NvJpegDecoder.h"
-#include "nvbuf_utils.h"
+#include "NvUtils.h"
+#include "nvbufsurface.h"
+#include "nvbufsurftransform.h"
+#include "NvBufSurface.h"
 #include <vector>
 #include <iostream>
 #include <thread>
@@ -44,8 +46,8 @@ struct nvmpictx
 	unsigned char * bufptr_0[MAX_BUFFERS];
 	unsigned char * bufptr_1[MAX_BUFFERS];
 	unsigned char * bufptr_2[MAX_BUFFERS];
-	unsigned int frame_size[MAX_NUM_PLANES];
-	unsigned int frame_linesize[MAX_NUM_PLANES];
+	unsigned int frame_size[MAX_PLANES];
+	unsigned int frame_linesize[MAX_PLANES];
 	unsigned long long timestamp[MAX_BUFFERS];
 };
 
@@ -53,8 +55,8 @@ void respondToResolutionEvent(v4l2_format &format, v4l2_crop &crop,nvmpictx* ctx
 	
 	int32_t minimumDecoderCaptureBuffers;
 	int ret=0;
-	NvBufferCreateParams input_params = {0};
-	NvBufferCreateParams cParams = {0};
+	NvBufSurf::NvCommonAllocateParams input_params = {0};
+	NvBufSurf::NvCommonAllocateParams cParams = {0};
 
 	ret = ctx->dec->capture_plane.getFormat(format);	
 	TEST_ERROR(ret < 0, "Error: Could not get format from decoder capture plane", ret);
@@ -67,16 +69,16 @@ void respondToResolutionEvent(v4l2_format &format, v4l2_crop &crop,nvmpictx* ctx
 
 	if(ctx->dst_dma_fd != -1)
 	{
-		NvBufferDestroy(ctx->dst_dma_fd);
+		ret = NvBufSurf::NvDestroy(ctx->dst_dma_fd);
 		ctx->dst_dma_fd = -1;
 	}
 
-	input_params.payloadType = NvBufferPayload_SurfArray;
+	input_params.memType = NVBUF_MEM_SURFACE_ARRAY;
 	input_params.width = crop.c.width;
 	input_params.height = crop.c.height;
-	input_params.layout = NvBufferLayout_Pitch;
-	input_params.colorFormat = ctx->out_pixfmt==NV_PIX_NV12?NvBufferColorFormat_NV12: NvBufferColorFormat_YUV420;
-	input_params.nvbuf_tag = NvBufferTag_VIDEO_DEC;
+	input_params.layout = NVBUF_LAYOUT_PITCH;
+	input_params.colorFormat = ctx->out_pixfmt==NV_PIX_NV12?NVBUF_COLOR_FORMAT_NV12:NVBUF_COLOR_FORMAT_YUV420;
+	input_params.memtag = NvBufSurfaceTag_VIDEO_DEC;
 
 	ctx->dec->capture_plane.deinitPlane();
 
@@ -84,7 +86,7 @@ void respondToResolutionEvent(v4l2_format &format, v4l2_crop &crop,nvmpictx* ctx
 	{
 		if (ctx->dmaBufferFileDescriptor[index] != 0)
 		{	
-			ret = NvBufferDestroy(ctx->dmaBufferFileDescriptor[index]);
+			ret = NvBufSurf::NvDestroy(ctx->dmaBufferFileDescriptor[index]);
 			TEST_ERROR(ret < 0, "Failed to Destroy NvBuffer", ret);
 		}
 
@@ -93,6 +95,9 @@ void respondToResolutionEvent(v4l2_format &format, v4l2_crop &crop,nvmpictx* ctx
 
 	ret=ctx->dec->setCapturePlaneFormat(format.fmt.pix_mp.pixelformat,format.fmt.pix_mp.width,format.fmt.pix_mp.height);
 	TEST_ERROR(ret < 0, "Error in setting decoder capture plane format", ret);
+
+	ret=ctx->dec->setMaxPerfMode(1);
+	TEST_ERROR(ret < 0, "Error in setting max perf mode", ret);
 
 	ctx->dec->getMinimumCapturePlaneBuffers(minimumDecoderCaptureBuffers);
 	TEST_ERROR(ret < 0, "Error while getting value of minimum capture plane buffers",ret);
@@ -107,63 +112,58 @@ void respondToResolutionEvent(v4l2_format &format, v4l2_crop &crop,nvmpictx* ctx
 			if (format.fmt.pix_mp.quantization == V4L2_QUANTIZATION_DEFAULT)
 			{
 				// "Decoder colorspace ITU-R BT.601 with standard range luma (16-235)"
-				cParams.colorFormat = NvBufferColorFormat_NV12;
+				cParams.colorFormat = NVBUF_COLOR_FORMAT_NV12;
 			}
 			else
 			{
 				//"Decoder colorspace ITU-R BT.601 with extended range luma (0-255)";
-				cParams.colorFormat = NvBufferColorFormat_NV12_ER;
+				cParams.colorFormat = NVBUF_COLOR_FORMAT_NV12_ER;
 			}
 			break;
 		case V4L2_COLORSPACE_REC709:
 			if (format.fmt.pix_mp.quantization == V4L2_QUANTIZATION_DEFAULT)
 			{
 				//"Decoder colorspace ITU-R BT.709 with standard range luma (16-235)";
-				cParams.colorFormat = NvBufferColorFormat_NV12_709;
+				cParams.colorFormat = NVBUF_COLOR_FORMAT_NV12_709;
 			}
 			else
 			{
 				//"Decoder colorspace ITU-R BT.709 with extended range luma (0-255)";
-				cParams.colorFormat = NvBufferColorFormat_NV12_709_ER;
+				cParams.colorFormat = NVBUF_COLOR_FORMAT_NV12_709_ER;
 			}
 			break;
 		case V4L2_COLORSPACE_BT2020:
 			{
 				//"Decoder colorspace ITU-R BT.2020";
-				cParams.colorFormat = NvBufferColorFormat_NV12_2020;
+				cParams.colorFormat = NVBUF_COLOR_FORMAT_NV12_2020;
 			}
 			break;
 		default:
 			if (format.fmt.pix_mp.quantization == V4L2_QUANTIZATION_DEFAULT)
 			{
 				//"Decoder colorspace ITU-R BT.601 with standard range luma (16-235)";
-				cParams.colorFormat = NvBufferColorFormat_NV12;
+				cParams.colorFormat = NVBUF_COLOR_FORMAT_NV12;
 			}
 			else
 			{
 				//"Decoder colorspace ITU-R BT.601 with extended range luma (0-255)";
-				cParams.colorFormat = NvBufferColorFormat_NV12_ER;
+				cParams.colorFormat = NVBUF_COLOR_FORMAT_NV12_ER;
 			}
 			break;
 	}
 
 
 
-	ret = NvBufferCreateEx (&ctx->dst_dma_fd, &input_params);
-	TEST_ERROR(ret == -1, "create dst_dmabuf failed", error);
+        ret = NvBufSurf::NvAllocate(&input_params, 1, &ctx->dst_dma_fd);
+        TEST_ERROR(ret == -1, "create dst_dmabuf failed", error);
 
-	for (int index = 0; index < ctx->numberCaptureBuffers; index++)
-	{
-		cParams.width = crop.c.width;
-		cParams.height = crop.c.height;
-		cParams.layout = NvBufferLayout_BlockLinear;
-		cParams.payloadType = NvBufferPayload_SurfArray;
-		cParams.nvbuf_tag = NvBufferTag_VIDEO_DEC;
-
-		ret = NvBufferCreateEx(&ctx->dmaBufferFileDescriptor[index], &cParams);
-		TEST_ERROR(ret < 0, "Failed to create buffers", ret);
-
-	}	
+        cParams.width = crop.c.width;
+        cParams.height = crop.c.height;
+        cParams.layout = NVBUF_LAYOUT_BLOCK_LINEAR;;
+        cParams.memType = NVBUF_MEM_SURFACE_ARRAY;
+        cParams.memtag = NvBufSurfaceTag_VIDEO_DEC;
+        ret = NvBufSurf::NvAllocate(&cParams, ctx->numberCaptureBuffers, ctx->dmaBufferFileDescriptor);
+	TEST_ERROR(ret < 0, "Failed to create buffers", ret);
 
 	ctx->dec->capture_plane.reqbufs(V4L2_MEMORY_DMABUF, ctx->numberCaptureBuffers);
 	TEST_ERROR(ret < 0, "Error in decoder capture plane streamon", ret);
@@ -240,33 +240,49 @@ void *dec_capture_loop_fcn(void *arg){
 			}
 
 			dec_buffer->planes[0].fd = ctx->dmaBufferFileDescriptor[v4l2_buf.index];
-			NvBufferRect src_rect, dest_rect;
-			src_rect.top = 0;
-			src_rect.left = 0;
-			src_rect.width = ctx->coded_width;
-			src_rect.height = ctx->coded_height;
-			dest_rect.top = 0;
-			dest_rect.left = 0;
-			dest_rect.width = ctx->coded_width;
-			dest_rect.height = ctx->coded_height;
 
-			NvBufferTransformParams transform_params;
-			memset(&transform_params,0,sizeof(transform_params));
-			transform_params.transform_flag = NVBUFFER_TRANSFORM_FILTER;
-			transform_params.transform_flip = NvBufferTransform_None;
-			transform_params.transform_filter = NvBufferTransform_Filter_Smart;
-			transform_params.src_rect = src_rect;
-			transform_params.dst_rect = dest_rect;
+			NvBufSurf::NvCommonTransformParams transform_params;
+
+                        transform_params.src_top = 0;
+			transform_params.src_left = 0;
+			transform_params.src_width = ctx->coded_width;
+			transform_params.src_height = ctx->coded_height;
+
+			transform_params.dst_top = 0;
+			transform_params.dst_left = 0;
+			transform_params.dst_width = ctx->coded_width;
+			transform_params.dst_height = ctx->coded_height;
+
+
+			transform_params.flag = NVBUFSURF_TRANSFORM_FILTER;
+			transform_params.flip = NvBufSurfTransform_None;
+			transform_params.filter = NvBufSurfTransformInter_Algo3;
+
 
 			ctx->mutex->lock();
 
 			if(!ctx->eos){
 
-				ret = NvBufferTransform(dec_buffer->planes[0].fd, ctx->dst_dma_fd, &transform_params);
+				ret = NvBufSurf::NvTransform(&transform_params, dec_buffer->planes[0].fd, ctx->dst_dma_fd);
 				TEST_ERROR(ret==-1, "Transform failed",ret);
 
-				NvBufferParams parm;
-				ret = NvBufferGetParams(ctx->dst_dma_fd, &parm);
+                                NvBufSurface* buf_surf = 0;
+                                NvBufSurfaceFromFd(ctx->dst_dma_fd, (void**)(&buf_surf));
+				NvBufSurfaceParams surParm = buf_surf->surfaceList[0];
+				NvBufSurfacePlaneParams parm = surParm.planeParams;
+
+                                // cout <<  "batchSize:" << buf_surf->batchSize << endl;
+                                // cout <<  "memType:" << buf_surf->memType << endl;
+                                // cout <<  "width:" << surParm.width << endl;
+                                // cout <<  "height:" << surParm.height << endl;
+                                // cout <<  "dataSize:" << surParm.dataSize << endl;
+                                // cout <<  "num_p:" << parm.num_planes << endl;
+                                // cout <<  "psize0:" << parm.psize[0] << endl;
+                                // cout <<  "psize1:" << parm.psize[1] << endl;
+                                // cout <<  "psize2:" << parm.psize[2] << endl;
+                                // cout <<  "bytesPerPix:" << parm.bytesPerPix << endl;
+
+
 
 				if(!ctx->frame_size[0]){
 
@@ -287,10 +303,14 @@ void *dec_capture_loop_fcn(void *arg){
 				ctx->frame_size[2]=parm.psize[2];
 
 
-				ret=NvBuffer2Raw(ctx->dst_dma_fd,0,parm.width[0],parm.height[0],ctx->bufptr_0[buf_index]);
-				ret=NvBuffer2Raw(ctx->dst_dma_fd,1,parm.width[1],parm.height[1],ctx->bufptr_1[buf_index]);	
-				if(ctx->out_pixfmt==NV_PIX_YUV420)
-					ret=NvBuffer2Raw(ctx->dst_dma_fd,2,parm.width[2],parm.height[2],ctx->bufptr_2[buf_index]);	
+                                ret=NvBufSurface2Raw(buf_surf, 0, 0, parm.width[0], parm.height[0],ctx->bufptr_0[buf_index]);
+                                TEST_ERROR(ret < 0, "Copy plane0 to mem error", ret);
+                                ret=NvBufSurface2Raw(buf_surf, 0, 1, parm.width[1], parm.height[1],ctx->bufptr_1[buf_index]);
+                                TEST_ERROR(ret < 0, "Copy plane1 to mem error", ret);
+				if(ctx->out_pixfmt==NV_PIX_YUV420) {
+                                        ret=NvBufSurface2Raw(buf_surf, 0, 2, parm.width[2], parm.height[2],ctx->bufptr_2[buf_index]);
+                                        TEST_ERROR(ret < 0, "Copy plane2 to mem error", ret);
+				}
 
 				ctx->frame_pools->push(buf_index);
 				ctx->timestamp[buf_index]= (v4l2_buf.timestamp.tv_usec % 1000000) + (v4l2_buf.timestamp.tv_sec * 1000000UL);
@@ -507,7 +527,7 @@ int nvmpi_decoder_close(nvmpictx* ctx){
 
 	if(ctx->dst_dma_fd != -1)
 	{
-		NvBufferDestroy(ctx->dst_dma_fd);
+		NvBufSurf::NvDestroy(ctx->dst_dma_fd);
 		ctx->dst_dma_fd = -1;
 	}
 
@@ -515,7 +535,7 @@ int nvmpi_decoder_close(nvmpictx* ctx){
 	{
 		if (ctx->dmaBufferFileDescriptor[index] != 0)
 		{	
-			int ret = NvBufferDestroy(ctx->dmaBufferFileDescriptor[index]);
+			int ret = NvBufSurf::NvDestroy(ctx->dmaBufferFileDescriptor[index]);
 			TEST_ERROR(ret < 0, "Failed to Destroy NvBuffer", ret);
 		}
 
